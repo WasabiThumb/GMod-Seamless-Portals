@@ -75,19 +75,22 @@ local function editPlayerCollision(mv, ply)
 		traceTable.ignoreworld = true
 	else
 		-- extrusion in case the player enables non-ground collision and manages to clip outside of the portal while they are falling (rare case)
-		if ply.PORTAL_STUCK_OFFSET != 0 and util.TraceLine({start = ply:EyePos(), endpos = ply:EyePos() - Vector(0, 0, 1), filter = ply}).Hit then 
-			ply.PORTAL_STUCK_OFFSET = nil
-			mv:SetOrigin(ply:GetPos() + Vector(0, 0, 72))
-			ply:ResetHull()
-			return 
+		if ply.PORTAL_STUCK_OFFSET != 0 then
+			local tr = util.TraceLine({start = ply:EyePos(), endpos = ply:EyePos() - Vector(0, 0, 64), filter = ply})
+			if tr.Hit and tr.Entity:GetClass() != "seamless_portal" then
+				ply.PORTAL_STUCK_OFFSET = nil
+				mv:SetOrigin(tr.HitPos)
+				ply:ResetHull()
+				return 
+			end
 		end
 	end
 
 	local tr = util.TraceHull(traceTable)
 
 	-- getting this to work on the ground was a FUCKING headache
-	if !ply.PORTAL_STUCK_OFFSET and tr.Hit and tr.Entity:GetClass() == "seamless_portal" and tr.Entity:ExitPortal() and tr.Entity:ExitPortal():IsValid() then
-		if tr.Entity:GetUp():Dot(Vector(0, 0, 1)) > 0.9 then		-- the portal is on the ground
+	if !ply.PORTAL_STUCK_OFFSET and tr.Hit and tr.Entity:GetClass() == "seamless_portal" and tr.Entity.ExitPortal and tr.Entity:ExitPortal() and tr.Entity:ExitPortal():IsValid() then
+		if tr.Entity:GetUp():Dot(Vector(0, 0, 1)) > 0.95 then		-- the portal is on the ground
 			traceTable.mins = Vector(0, 0, 0)
 			traceTable.maxs = Vector(0, 0, 72)
 
@@ -96,8 +99,10 @@ local function editPlayerCollision(mv, ply)
 				return -- we accomplished nothing :DDDD
 			end
 
-			ply.PORTAL_STUCK_OFFSET = 71
-		else	
+			ply.PORTAL_STUCK_OFFSET = 72
+		elseif tr.Entity:GetUp():Dot(Vector(0, 0, 1)) < -0.95 then 
+			return 
+		else
 			ply.PORTAL_STUCK_OFFSET = 0		-- the portal is not on the ground
 		end
 
@@ -108,7 +113,7 @@ local function editPlayerCollision(mv, ply)
 		ply:ResetHull()
 		ply.PORTAL_STUCK_OFFSET = nil
 	end
-
+	
 	traceTable.ignoreworld = false
 end
 
@@ -123,8 +128,8 @@ hook.Add("Move", "seamless_portal_teleport", function(ply, mv)
 	end
 
 	local plyPos = ply:EyePos()
-	traceTable.start = plyPos - mv:GetVelocity() * 0.02 * (ply.SCALE_MULTIPLIER or 1)
-	traceTable.endpos = plyPos + mv:GetVelocity() * 0.02 * (ply.SCALE_MULTIPLIER or 1)
+	traceTable.start = plyPos - mv:GetVelocity() * 0.02
+	traceTable.endpos = plyPos + mv:GetVelocity() * 0.02
 	traceTable.filter = ply
 	local tr = util.TraceLine(traceTable)
 
@@ -132,7 +137,7 @@ hook.Add("Move", "seamless_portal_teleport", function(ply, mv)
 	
 	if !tr.Hit then return end
 	local hitPortal = tr.Entity
-	if hitPortal:GetClass() == "seamless_portal" and hitPortal:ExitPortal() and hitPortal:ExitPortal():IsValid() then
+	if hitPortal:GetClass() == "seamless_portal" and hitPortal.ExitPortal and hitPortal:ExitPortal() and hitPortal:ExitPortal():IsValid() then
 		if mv:GetVelocity():Dot(hitPortal:GetUp()) < 0 then
 			if ply.PORTAL_TELEPORTING then return end
 			freezePly = true
@@ -162,7 +167,7 @@ hook.Add("Move", "seamless_portal_teleport", function(ply, mv)
 				offset = editedPos
 			end
 
-			local exitSize = (hitPortal:ExitPortal():GetExitSize() / hitPortal:GetExitSize())
+			local exitSize = (hitPortal:ExitPortal():GetExitSize()[1] / hitPortal:GetExitSize()[1])
 			if ply.SCALE_MULTIPLIER then
 				ply:ConCommand("scale_multiplier " .. (ply.SCALE_MULTIPLIER * exitSize))
 				ply.SCALE_MULTIPLIER = math.Clamp(ply.SCALE_MULTIPLIER * exitSize, 0.01, 10)
@@ -191,8 +196,9 @@ hook.Add("Move", "seamless_portal_teleport", function(ply, mv)
 			end
 
 			ply.PORTAL_TELEPORTING = true 
-			ply.PORTAL_STUCK_OFFSET = nil
-			ply:ResetHull()
+			ply.PORTAL_STUCK_OFFSET = 0
+			ply:SetHull(Vector(-4, -4, 0), Vector(4, 4, 72))
+			ply:SetHullDuck(Vector(-4, -4, 0), Vector(4, 4, 36))
 
 			timer.Simple(0, function()
 				ply.PORTAL_TELEPORTING = false
